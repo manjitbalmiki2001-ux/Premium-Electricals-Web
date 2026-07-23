@@ -3,6 +3,7 @@ import psycopg2
 import pandas as pd
 from datetime import datetime
 import os
+import random
 
 # ==========================================
 # ⚙️ PAGE CONFIGURATION & DATABASE
@@ -11,19 +12,14 @@ st.set_page_config(page_title="Premium Electricals - Business Management System"
 
 DB_URL = "postgresql://postgres.nerrocywloccycvdqcqn:Manjitred4505@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
 
+# 🚀 PERFORMANCE OPTIMIZATION: Connection & Table Creation Cached Together!
+# Ab yeh heavy load baar-baar nahi lega, sirf ek baar run hoga. App ekdum fast chalegi!
 @st.cache_resource
-def init_connection():
-    return psycopg2.connect(DB_URL)
-
-try:
-    conn = init_connection()
-    conn.autocommit = True
-except Exception as e:
-    st.error(f"Database Connection Failed: {e}")
-    st.stop()
-
-def create_tables():
+def init_connection_and_setup():
     try:
+        conn = psycopg2.connect(DB_URL)
+        conn.autocommit = True
+        
         with conn.cursor() as cur:
             # 1. Purchase Table
             cur.execute('''CREATE TABLE IF NOT EXISTS web_purchase_bills (
@@ -55,17 +51,22 @@ def create_tables():
             if not cur.fetchone():
                 cur.execute("INSERT INTO web_business_profile (id, firm_name) VALUES (1, 'PREMIUM ELECTRICALS & WHOLESALERS')")
                 
-            # --- AUTO HEALING: IF OLD DATABASE HAS MISSING COLUMNS, ADD THEM SAFELY ---
+            # --- AUTO HEALING SYSTEM ---
             try: cur.execute("ALTER TABLE web_sales_bills ADD COLUMN IF NOT EXISTS customer_name VARCHAR(100)")
             except: pass
             try: cur.execute("ALTER TABLE web_purchase_bills ADD COLUMN IF NOT EXISTS party VARCHAR(100)")
             except: pass
             try: cur.execute("ALTER TABLE web_purchase_bills ADD COLUMN IF NOT EXISTS company VARCHAR(100)")
             except: pass
+            
+        return conn
     except Exception as e:
-        pass # Prevents startup crashes
+        st.error(f"Database Initialization Failed: {e}")
+        return None
 
-create_tables()
+conn = init_connection_and_setup()
+if not conn:
+    st.stop()
 
 # ==========================================
 # 🎨 CUSTOM CSS THEME
@@ -91,8 +92,25 @@ st.markdown("""
     .summary-box { background-color: #1A1A24; padding: 15px; border-radius: 10px; border: 1px solid #333; margin-bottom:15px;}
     .grand-total { font-size: 24px; color: #DC2626; font-weight: bold; }
     .tagline { color: #B000FF; font-size: 16px; font-weight: bold; text-align: center; margin-top: 50px; border-top: 2px solid #00E5FF; padding-top: 10px;}
+    .quote-box { background-color: #1E1E2E; border-left: 4px solid #00E5FF; padding: 10px 15px; border-radius: 5px; font-style: italic; color: #E0E0E0; margin-bottom: 20px;}
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# 💡 MOTIVATIONAL & KNOWLEDGE QUOTES
+# ==========================================
+QUOTES = [
+    "“Great things in business are never done by one person. They're done by a team of people.”",
+    "“Quality means doing it right when no one is looking.” – Henry Ford",
+    "“Energy and persistence conquer all things.” – Benjamin Franklin",
+    "“The secret of getting ahead is getting started.”",
+    "“Electricity is really just organized lightning.” – George Carlin",
+    "“Don't watch the clock; do what it does. Keep going.”",
+    "“Opportunities don't happen. You create them.” – Chris Grosser",
+    "“Success is not final; failure is not fatal: It is the courage to continue that counts.”",
+    "“A satisfied customer is the best business strategy of all.”",
+    "“Growth is never by mere chance; it is the result of forces working together.”"
+]
 
 # STATE MANAGEMENT
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
@@ -125,9 +143,14 @@ if not st.session_state.logged_in:
                     st.error("❌ Invalid password! Try again.")
     st.stop()
 
-# 🚪 LOGOUT SIDEBAR
+# 🚪 SIDEBAR MENU & QUOTE
 with st.sidebar:
     st.title("⚡ Premium ERP")
+    st.markdown(f'<div class="quote-box">💡 {random.choice(QUOTES)}</div>', unsafe_allow_html=True)
+    st.divider()
+    if st.button("🏠 Home Dashboard", use_container_width=True):
+        st.session_state.page = "home"
+        st.rerun()
     st.divider()
     if st.button("🚪 Logout System", use_container_width=True):
         st.session_state.logged_in = False
@@ -146,7 +169,11 @@ def fetch_profile():
 # ==========================================
 if st.session_state.page == "home":
     st.markdown('<div class="main-headline">⚡ PREMIUM ELECTRICALS ⚡</div>', unsafe_allow_html=True)
-    st.markdown('<h3 style="color:#B000FF; text-align:center;">Commercial Sales & Business Operations Dashboard</h3><br><br>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#B000FF; text-align:center;">Commercial Sales & Business Operations Dashboard</h3><br>', unsafe_allow_html=True)
+    
+    # Adding quote to main screen as well for better UI
+    st.markdown(f'<div class="quote-box" style="text-align:center; max-width: 800px; margin: 0 auto 30px auto;">{random.choice(QUOTES)}</div>', unsafe_allow_html=True)
+
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("🛒 PURCHASE REGISTER\n\n(Inward Stock)", use_container_width=True): st.session_state.page = "purchase"; st.rerun()
@@ -159,7 +186,6 @@ if st.session_state.page == "home":
 # 🛒 2. PURCHASE REGISTER
 # ==========================================
 elif st.session_state.page == "purchase":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): st.session_state.page = "home"; st.rerun()
     st.markdown('<div class="module-title">NEW PURCHASE ENTRY</div>', unsafe_allow_html=True)
     
     c1, c2, _ = st.columns([1.5, 1.5, 5])
@@ -263,7 +289,6 @@ elif st.session_state.page == "purchase":
 # 📄 3. PROFORMA INVOICE
 # ==========================================
 elif st.session_state.page == "proforma":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): st.session_state.page = "home"; st.rerun()
     profile = fetch_profile()
     firm_name = profile[0] if profile else "Not Set"
     st.markdown(f'<h2 style="color:#1E3A8A; font-weight:bold; margin:0;">FIRM NAME: {firm_name.upper()}</h2>', unsafe_allow_html=True)
@@ -454,7 +479,6 @@ elif st.session_state.page == "proforma":
 # 💰 4. SALES REGISTER
 # ==========================================
 elif st.session_state.page == "sales":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): st.session_state.page = "home"; st.rerun()
     st.markdown('<div class="module-title">NEW SALES ENTRY</div>', unsafe_allow_html=True)
     
     c1, c2, _ = st.columns([1.5, 1.5, 5])
