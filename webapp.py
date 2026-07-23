@@ -67,7 +67,7 @@ if not conn:
     st.stop()
 
 # ==========================================
-# 🎨 CUSTOM CSS THEME
+# 🎨 CUSTOM CSS THEME & LINK BUTTONS
 # ==========================================
 st.markdown("""
     <style>
@@ -75,6 +75,7 @@ st.markdown("""
     .main-headline { color: #00E5FF; font-size: 42px; font-weight: 900; text-align: center; }
     .module-title { color: #00E5FF; font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 20px;}
     
+    /* STREAMLIT NATIVE BUTTONS */
     .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button { 
         background-color: #1A1A24 !important; border: 2px solid #00E5FF !important; color: #00E5FF !important; 
         border-radius: 8px !important; font-weight: bold !important; transition: all 0.3s ease-in-out !important; 
@@ -82,6 +83,15 @@ st.markdown("""
     .stButton > button:hover, .stFormSubmitButton > button:hover, .stDownloadButton > button:hover { 
         background-color: #00E5FF !important; color: #121212 !important; 
     }
+    
+    /* CUSTOM HARDWARE-BACK-SUPPORTED LINK BUTTONS */
+    .nav-btn {
+        display: block; width: 100%; padding: 15px; background-color: #1A1A24;
+        color: #00E5FF !important; text-align: center; text-decoration: none !important;
+        border: 2px solid #00E5FF; border-radius: 8px; font-weight: bold; font-size: 16px;
+        transition: all 0.3s ease-in-out; cursor: pointer; margin-bottom: 10px;
+    }
+    .nav-btn:hover { background-color: #00E5FF; color: #121212 !important; }
     
     .stTextInput > div > div > input, .stNumberInput > div > div > input, .stDateInput > div > div > input, .stTimeInput > div > div > input {
         background-color: #1A1A24 !important; color: #00E5FF !important; border: 1px solid #333 !important;
@@ -95,7 +105,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 💡 MOTIVATIONAL & KNOWLEDGE QUOTES
+# 💡 MOTIVATIONAL QUOTES
 # ==========================================
 QUOTES = [
     "“Great things in business are never done by one person. They're done by a team of people.”",
@@ -105,31 +115,26 @@ QUOTES = [
     "“Electricity is really just organized lightning.” – George Carlin",
     "“Don't watch the clock; do what it does. Keep going.”",
     "“Opportunities don't happen. You create them.” – Chris Grosser",
-    "“Success is not final; failure is not fatal: It is the courage to continue that counts.”",
     "“A satisfied customer is the best business strategy of all.”",
     "“Growth is never by mere chance; it is the result of forces working together.”"
 ]
 
 # ==========================================
-# 🧠 SMART HARDWARE BACK BUTTON SYNC SYSTEM
+# 🧠 REFRESH-PROOF URL SYNC SYSTEM
 # ==========================================
-# 1. Login State check
+query_params = st.query_params
+
+# READ URL TO PREVENT LOGOUT ON REFRESH
 if "logged_in" not in st.session_state: 
-    if st.query_params.get("auth") == "unlocked":
+    if query_params.get("auth") == "unlocked":
         st.session_state.logged_in = True
     else:
         st.session_state.logged_in = False
 
-# 2. Sync Phone Browser URL with App State (Crucial for Back Button)
-url_page = st.query_params.get("page", "home")
+# READ PAGE FROM URL SO BROWSER BACK BUTTON WORKS
+url_page = query_params.get("page", "home")
+st.session_state.page = url_page
 
-if "page" not in st.session_state: 
-    st.session_state.page = url_page
-elif st.session_state.page != url_page:
-    # URL changed means user pressed the phone's hardware back button!
-    st.session_state.page = url_page
-
-# Other default states
 if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entry"
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
@@ -153,9 +158,9 @@ if not st.session_state.logged_in:
             if st.form_submit_button("🔓 UNLOCK DASHBOARD", use_container_width=True):
                 if password == "5200":
                     st.session_state.logged_in = True
+                    # LOCK THE URL SO REFRESH WORKS
                     st.query_params["auth"] = "unlocked"
                     st.query_params["page"] = "home"
-                    st.session_state.page = "home"
                     st.rerun()
                 else:
                     st.error("❌ Invalid password! Try again.")
@@ -166,14 +171,11 @@ with st.sidebar:
     st.title("⚡ Premium ERP")
     st.markdown(f'<div class="quote-box">💡 {random.choice(QUOTES)}</div>', unsafe_allow_html=True)
     st.divider()
-    if st.button("🏠 Home Dashboard", use_container_width=True):
-        st.session_state.page = "home"
-        st.query_params["page"] = "home" # Update URL for back button tracker
-        st.rerun()
+    # NATIVE HTML LINK FOR HOME DASHBOARD (Supports Back Button)
+    st.markdown('<a href="?auth=unlocked&page=home" target="_self" class="nav-btn">🏠 Home Dashboard</a>', unsafe_allow_html=True)
     st.divider()
     if st.button("🚪 Logout System", use_container_width=True):
         st.session_state.logged_in = False
-        st.session_state.page = "home"
         st.query_params.clear() 
         st.rerun()
 
@@ -190,34 +192,22 @@ def fetch_profile():
 if st.session_state.page == "home":
     st.markdown('<div class="main-headline">⚡ PREMIUM ELECTRICALS ⚡</div>', unsafe_allow_html=True)
     st.markdown('<h3 style="color:#B000FF; text-align:center;">Commercial Sales & Business Operations Dashboard</h3><br>', unsafe_allow_html=True)
-    
     st.markdown(f'<div class="quote-box" style="text-align:center; max-width: 800px; margin: 0 auto 30px auto;">{random.choice(QUOTES)}</div>', unsafe_allow_html=True)
 
+    # NATIVE HTML LINKS FOR MODULES (These trigger the history API for Phone Back Button)
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🛒 PURCHASE REGISTER\n\n(Inward Stock)", use_container_width=True): 
-            st.session_state.page = "purchase"
-            st.query_params["page"] = "purchase"
-            st.rerun()
+        st.markdown('<a href="?auth=unlocked&page=purchase" target="_self" class="nav-btn">🛒 PURCHASE REGISTER<br><br><span style="font-size:14px; font-weight:normal;">(Inward Stock)</span></a>', unsafe_allow_html=True)
     with col2:
-        if st.button("📄 PROFORMA INVOICE\n\n(Quotation Builder)", use_container_width=True): 
-            st.session_state.page = "proforma"
-            st.query_params["page"] = "proforma"
-            st.rerun()
+        st.markdown('<a href="?auth=unlocked&page=proforma" target="_self" class="nav-btn">📄 PROFORMA INVOICE<br><br><span style="font-size:14px; font-weight:normal;">(Quotation Builder)</span></a>', unsafe_allow_html=True)
     with col3:
-        if st.button("💰 SALES REGISTER\n\n(Tax Invoice Billing)", use_container_width=True): 
-            st.session_state.page = "sales"
-            st.query_params["page"] = "sales"
-            st.rerun()
+        st.markdown('<a href="?auth=unlocked&page=sales" target="_self" class="nav-btn">💰 SALES REGISTER<br><br><span style="font-size:14px; font-weight:normal;">(Tax Invoice Billing)</span></a>', unsafe_allow_html=True)
 
 # ==========================================
 # 🛒 2. PURCHASE REGISTER
 # ==========================================
 elif st.session_state.page == "purchase":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
-        st.session_state.page = "home"
-        st.query_params["page"] = "home"
-        st.rerun()
+    st.markdown('<a href="?auth=unlocked&page=home" target="_self" class="nav-btn" style="width: auto; display: inline-block; padding: 8px 20px; font-size: 14px; margin-bottom: 20px;">⬅️ BACK TO MAIN DASHBOARD</a>', unsafe_allow_html=True)
         
     st.markdown('<div class="module-title">NEW PURCHASE ENTRY</div>', unsafe_allow_html=True)
     
@@ -229,14 +219,12 @@ elif st.session_state.page == "purchase":
     st.divider()
 
     if st.session_state.purchase_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_pur_parties = []
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT DISTINCT party FROM web_purchase_bills WHERE party IS NOT NULL AND party != ''")
                 saved_pur_parties = [r[0] for r in cur.fetchall()]
-        except Exception:
-            pass
+        except Exception: pass
         
         autofill_party = st.selectbox("🔍 Search & Autofill Past Supplier Details", ["-- Type New Below --"] + saved_pur_parties)
         def_party, def_pgst, def_company = "", "", ""
@@ -322,10 +310,7 @@ elif st.session_state.page == "purchase":
 # 📄 3. PROFORMA INVOICE
 # ==========================================
 elif st.session_state.page == "proforma":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
-        st.session_state.page = "home"
-        st.query_params["page"] = "home"
-        st.rerun()
+    st.markdown('<a href="?auth=unlocked&page=home" target="_self" class="nav-btn" style="width: auto; display: inline-block; padding: 8px 20px; font-size: 14px; margin-bottom: 20px;">⬅️ BACK TO MAIN DASHBOARD</a>', unsafe_allow_html=True)
         
     profile = fetch_profile()
     firm_name = profile[0] if profile else "Not Set"
@@ -341,7 +326,6 @@ elif st.session_state.page == "proforma":
     st.divider()
 
     if st.session_state.proforma_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_parties = []
         try:
             with conn.cursor() as cur:
@@ -517,10 +501,7 @@ elif st.session_state.page == "proforma":
 # 💰 4. SALES REGISTER
 # ==========================================
 elif st.session_state.page == "sales":
-    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
-        st.session_state.page = "home"
-        st.query_params["page"] = "home"
-        st.rerun()
+    st.markdown('<a href="?auth=unlocked&page=home" target="_self" class="nav-btn" style="width: auto; display: inline-block; padding: 8px 20px; font-size: 14px; margin-bottom: 20px;">⬅️ BACK TO MAIN DASHBOARD</a>', unsafe_allow_html=True)
         
     st.markdown('<div class="module-title">NEW SALES ENTRY</div>', unsafe_allow_html=True)
     
@@ -532,7 +513,6 @@ elif st.session_state.page == "sales":
     st.divider()
 
     if st.session_state.sales_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_customers = []
         try:
             with conn.cursor() as cur:
