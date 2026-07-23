@@ -236,12 +236,15 @@ elif st.session_state.page == "proforma":
         total_taxable, total_disc, total_tax, grand_total = 0.0, 0.0, 0.0, 0.0
         calculated_items = []
         for index, row in edited_df.iterrows():
-            if row["Item Name"].strip() != "":
+            # Safely handle 'None' or empty cells in the data editor
+            item_name = str(row["Item Name"]) if pd.notna(row["Item Name"]) else ""
+            
+            if item_name.strip() != "" and item_name.strip().lower() != "none":
                 qty = float(row["Qty"] or 0); price_incl = float(row["Price (Incl. GST)"] or 0); disc_perc = float(row["Disc %"] or 0); tax_rate = float(row["Tax %"] or 0)
                 gross_incl = qty * price_incl; disc_amt = gross_incl * (disc_perc / 100); net_incl = gross_incl - disc_amt
                 taxable_amt = net_incl / (1 + (tax_rate / 100)); tax_amt = net_incl - taxable_amt
                 total_taxable += taxable_amt; total_disc += disc_amt; total_tax += tax_amt; grand_total += net_incl
-                calculated_items.append((row["Item Name"], qty, price_incl, disc_perc, tax_rate, net_incl))
+                calculated_items.append((item_name, qty, price_incl, disc_perc, tax_rate, net_incl))
 
         s1, s2, s3, s4 = st.columns(4)
         s1.metric("Sub Total", f"₹{total_taxable:,.2f}"); s2.metric("Discount", f"₹{total_disc:,.2f}"); s3.metric("Total Tax", f"₹{total_tax:,.2f}"); s4.markdown(f'<div class="grand-total">Grand Total: ₹{grand_total:,.2f}</div>', unsafe_allow_html=True)
