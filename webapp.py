@@ -64,18 +64,12 @@ st.markdown("""
     .main-headline { color: #00E5FF; font-size: 42px; font-weight: 900; text-align: center; }
     .module-title { color: #00E5FF; font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 20px;}
     
-    /* PERMANENTLY VISIBLE BUTTONS */
     .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button { 
-        background-color: #1A1A24 !important; 
-        border: 2px solid #00E5FF !important; 
-        color: #00E5FF !important; 
-        border-radius: 8px !important; 
-        font-weight: bold !important; 
-        transition: all 0.3s ease-in-out !important; 
+        background-color: #1A1A24 !important; border: 2px solid #00E5FF !important; color: #00E5FF !important; 
+        border-radius: 8px !important; font-weight: bold !important; transition: all 0.3s ease-in-out !important; 
     }
     .stButton > button:hover, .stFormSubmitButton > button:hover, .stDownloadButton > button:hover { 
-        background-color: #00E5FF !important; 
-        color: #121212 !important; 
+        background-color: #00E5FF !important; color: #121212 !important; 
     }
     
     .stTextInput > div > div > input, .stNumberInput > div > div > input, .stDateInput > div > div > input, .stTimeInput > div > div > input {
@@ -95,12 +89,9 @@ if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entr
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
 
-# SMART ROW SYSTEM: Only 1 row initially. Enter/Tab will automatically add more.
+# Initialize completely empty dataframe to avoid "None" bug
 if "proforma_items" not in st.session_state:
-    st.session_state.proforma_items = pd.DataFrame(
-        columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"], 
-        data=[["", 1, 0.0, 0.0, 0.0, 0.0]]
-    )
+    st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"])
 
 # ==========================================
 # 🔒 AUTHENTICATION / LOGIN SCREEN
@@ -166,19 +157,33 @@ elif st.session_state.page == "purchase":
     st.divider()
 
     if st.session_state.purchase_tab == "entry":
+        saved_pur_parties = []
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT party FROM web_purchase_bills WHERE party IS NOT NULL AND party != ''")
+            saved_pur_parties = [r[0] for r in cur.fetchall()]
+        
+        autofill_party = st.selectbox("🔍 Search & Autofill Past Supplier Details", ["-- Type New Below --"] + saved_pur_parties)
+        def_party, def_pgst, def_company = "", "", ""
+        if autofill_party != "-- Type New Below --":
+            def_party = autofill_party
+            with conn.cursor() as cur:
+                cur.execute("SELECT company, gstin FROM web_purchase_bills WHERE party=%s ORDER BY id DESC LIMIT 1", (autofill_party,))
+                res = cur.fetchone()
+                if res: def_company, def_pgst = res[0] or "", res[1] or ""
+
         with st.form("purchase_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 bill_no = st.text_input("Bill Number *")
-                company = st.text_input("Company Name")
-                gstin = st.text_input("Party GSTIN")
+                company = st.text_input("Company Name", value=def_company)
+                gstin = st.text_input("Party GSTIN", value=def_pgst)
                 taxable = st.number_input("Taxable Amount (₹)", min_value=0.0, format="%.2f")
                 sgst = st.number_input("SGST Amount (₹)", min_value=0.0, format="%.2f")
                 total = st.number_input("Total Bill Amount (₹) *", min_value=0.0, format="%.2f")
                 uploaded_file = st.file_uploader("Bill Image/PDF", type=["png", "jpg", "jpeg", "pdf"])
             with col2:
                 bill_date = st.date_input("Bill Date *", datetime.today())
-                party = st.text_input("Party Name *")
+                party = st.text_input("Party Name *", value=def_party)
                 qty = st.number_input("Total Qty", min_value=0, step=1)
                 cgst = st.number_input("CGST Amount (₹)", min_value=0.0, format="%.2f")
                 igst = st.number_input("IGST Amount (₹)", min_value=0.0, format="%.2f")
@@ -250,13 +255,27 @@ elif st.session_state.page == "proforma":
     st.divider()
 
     if st.session_state.proforma_tab == "entry":
+        saved_parties = []
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT party_name FROM web_proforma_invoices WHERE party_name IS NOT NULL AND party_name != ''")
+            saved_parties = [r[0] for r in cur.fetchall()]
+        
+        selected_party_af = st.selectbox("🔍 Search & Autofill Past Party Details", ["-- Type New Below --"] + saved_parties)
+        p_name, p_addr, p_mob, p_gst = "", "", "", ""
+        if selected_party_af != "-- Type New Below --":
+            p_name = selected_party_af
+            with conn.cursor() as cur:
+                cur.execute("SELECT address, mobile, gstin FROM web_proforma_invoices WHERE party_name=%s ORDER BY id DESC LIMIT 1", (selected_party_af,))
+                details = cur.fetchone()
+                if details: p_addr, p_mob, p_gst = details[0] or "", details[1] or "", details[2] or ""
+
         col1, col2 = st.columns(2)
         with col1:
-            party_name = st.text_input("Party Name *")
-            party_address = st.text_input("Address")
+            party_name = st.text_input("Party Name *", value=p_name)
+            party_address = st.text_input("Address", value=p_addr)
             c_a, c_b = st.columns(2)
-            with c_a: party_mobile = st.text_input("Mobile Number")
-            with c_b: party_gstin = st.text_input("GSTIN (Optional)")
+            with c_a: party_mobile = st.text_input("Mobile Number", value=p_mob)
+            with c_b: party_gstin = st.text_input("GSTIN (Optional)", value=p_gst)
         with col2:
             inv_no = st.text_input("Invoice No *")
             c_c, c_d = st.columns(2)
@@ -264,11 +283,48 @@ elif st.session_state.page == "proforma":
             with c_d: inv_time = st.time_input("Time", datetime.now().time())
             notes = st.text_input("Terms & Comments")
 
-        st.subheader("Items Table")
+        st.divider()
         
-        # UI config applied: Shows Disc Amt (₹)
+        # ========================================
+        # ⚡ FAST ITEM ENTRY FORM FOR MOBILE ⚡
+        # ========================================
+        st.markdown('<div class="module-title" style="font-size:22px;">🛒 Fast Item Entry (Mobile Optimized)</div>', unsafe_allow_html=True)
+        st.caption("📱 Mobile Users: Is form me Type karein. Keyboard turant khulega bina double tap kiye!")
+        
+        with st.form("add_item_form", clear_on_submit=True):
+            c_i1, c_i2, c_i3 = st.columns([2, 1, 1])
+            with c_i1: new_i_name = st.text_input("📝 Item Name (Click here to type) *")
+            with c_i2: new_i_qty = st.number_input("Qty", min_value=1, value=1)
+            with c_i3: new_i_price = st.number_input("Price (₹)", min_value=0.0, format="%.2f")
+
+            c_i4, c_i5, c_i6, c_i7 = st.columns([1,1,1,1.5])
+            with c_i4: new_i_dp = st.number_input("Disc %", min_value=0.0, format="%.2f")
+            with c_i5: new_i_da = st.number_input("Disc (₹)", min_value=0.0, format="%.2f")
+            with c_i6: new_i_tax = st.number_input("Tax %", min_value=0.0, format="%.2f")
+            with c_i7:
+                st.markdown("<br>", unsafe_allow_html=True)
+                add_btn = st.form_submit_button("➕ ADD ITEM TO BILL", use_container_width=True)
+            
+            if add_btn:
+                if new_i_name.strip():
+                    new_row = pd.DataFrame([{
+                        "Item Name": new_i_name, "Qty": new_i_qty, "Price (Incl. GST)": new_i_price,
+                        "Disc %": new_i_dp, "Disc Amt (₹)": new_i_da, "Tax %": new_i_tax
+                    }])
+                    st.session_state.proforma_items = pd.concat([st.session_state.proforma_items, new_row], ignore_index=True)
+                    st.rerun()
+                else:
+                    st.error("⚠️ Please enter an Item Name first!")
+
+        # ========================================
+        # 📋 INVOICE ITEMS TABLE & CALCULATIONS
+        # ========================================
+        st.subheader("📋 Invoice Items")
+        st.caption("💡 Tip: To delete an item, check the box on the left and click the 🗑️ icon on the top right.")
+        
         edited_df = st.data_editor(st.session_state.proforma_items, num_rows="dynamic", use_container_width=True,
             column_config={
+                "Item Name": st.column_config.TextColumn(required=False),
                 "Qty": st.column_config.NumberColumn(min_value=1), 
                 "Price (Incl. GST)": st.column_config.NumberColumn(format="₹%.2f"),
                 "Disc %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0), 
@@ -276,13 +332,16 @@ elif st.session_state.page == "proforma":
                 "Tax %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0)
             })
 
+        # Sync table edits/deletes back to session state so they persist
+        st.session_state.proforma_items = edited_df
+
         total_taxable, total_disc, total_tax, grand_total = 0.0, 0.0, 0.0, 0.0
         calculated_items = []
         
         for index, row in edited_df.iterrows():
-            item_name = str(row["Item Name"]) if pd.notna(row["Item Name"]) else ""
-            
-            if item_name.strip() != "" and item_name.strip().lower() != "none":
+            item_name = str(row["Item Name"]).strip()
+            # Absolute kill-switch for 'None' or blank values
+            if item_name != "" and item_name.lower() != "none" and item_name.lower() != "nan":
                 qty = float(row.get("Qty") or 0)
                 price_incl = float(row.get("Price (Incl. GST)") or 0)
                 disc_perc = float(row.get("Disc %") or 0)
@@ -291,10 +350,8 @@ elif st.session_state.page == "proforma":
 
                 gross_incl = qty * price_incl
                 
-                # SMART DISCOUNT CALCULATION
                 if disc_amt_flat > 0:
                     disc_amt = disc_amt_flat
-                    # Convert to percentage for DB storage to avoid schema changes
                     effective_disc_perc = (disc_amt / gross_incl) * 100 if gross_incl > 0 else 0
                 else:
                     disc_amt = gross_incl * (disc_perc / 100)
@@ -315,7 +372,7 @@ elif st.session_state.page == "proforma":
 
         if st.button("💾 SAVE INVOICE", type="primary"):
             if not inv_no or not party_name: st.error("⚠️ Invoice No and Party Name are mandatory.")
-            elif not calculated_items: st.error("⚠️ Please add at least one item.")
+            elif not calculated_items: st.error("⚠️ Please add at least one valid item.")
             else:
                 try:
                     with conn.cursor() as cur:
@@ -323,13 +380,13 @@ elif st.session_state.page == "proforma":
                                     (inv_no, inv_date, inv_time.strftime("%H:%M"), party_name, party_address, party_mobile, party_gstin, total_taxable, total_disc, total_tax, grand_total, notes))
                         invoice_id = cur.fetchone()[0]
                         for item in calculated_items:
-                            # Saving the effective percentage to the existing database schema
                             cur.execute("INSERT INTO web_proforma_items (invoice_id, item_name, qty, price_incl, disc_perc, tax_perc, line_total) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
                                         (invoice_id, item[0], item[1], item[2], item[3], item[4], item[5]))
                     
                     st.success("✅ Invoice saved!")
-                    # RESET TABLE BACK TO 1 EMPTY ROW
-                    st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"], data=[["", 1, 0.0, 0.0, 0.0, 0.0]])
+                    # Clear items after saving
+                    st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"])
+                    st.rerun()
                 
                 except Exception as e: st.error(f"Error: {e}")
 
@@ -382,11 +439,25 @@ elif st.session_state.page == "sales":
     st.divider()
 
     if st.session_state.sales_tab == "entry":
+        saved_customers = []
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT customer_name FROM web_sales_bills WHERE customer_name IS NOT NULL AND customer_name != ''")
+            saved_customers = [r[0] for r in cur.fetchall()]
+        
+        autofill_cust = st.selectbox("🔍 Search & Autofill Past Customer Details", ["-- Type New Below --"] + saved_customers)
+        def_cust, def_cgst = "", ""
+        if autofill_cust != "-- Type New Below --":
+            def_cust = autofill_cust
+            with conn.cursor() as cur:
+                cur.execute("SELECT gstin FROM web_sales_bills WHERE customer_name=%s ORDER BY id DESC LIMIT 1", (autofill_cust,))
+                res = cur.fetchone()
+                if res: def_cgst = res[0] or ""
+
         with st.form("sales_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 inv_no = st.text_input("Invoice No *")
-                customer = st.text_input("Customer Name *")
+                customer = st.text_input("Customer Name *", value=def_cust)
                 items = st.text_input("Item Details", placeholder="e.g., GM BLDC Fan, 2.5mm Wire...")
                 taxable = st.number_input("Taxable Amount (₹)", min_value=0.0, format="%.2f")
                 sgst = st.number_input("SGST Amount (₹)", min_value=0.0, format="%.2f")
@@ -394,7 +465,7 @@ elif st.session_state.page == "sales":
                 uploaded_file = st.file_uploader("Bill Image/PDF", type=["png", "jpg", "jpeg", "pdf"])
             with col2:
                 inv_date = st.date_input("Invoice Date *", datetime.today())
-                gstin = st.text_input("Customer GSTIN")
+                gstin = st.text_input("Customer GSTIN", value=def_cgst)
                 qty = st.number_input("Total Qty", min_value=0, step=1)
                 cgst = st.number_input("CGST Amount (₹)", min_value=0.0, format="%.2f")
                 igst = st.number_input("IGST Amount (₹)", min_value=0.0, format="%.2f")
