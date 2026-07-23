@@ -89,12 +89,44 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # STATE MANAGEMENT
+if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "page" not in st.session_state: st.session_state.page = "home"
 if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entry"
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
 if "proforma_items" not in st.session_state:
     st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Tax %"], data=[["", 1, 0.0, 0, 0] for _ in range(5)])
+
+# ==========================================
+# 🔒 AUTHENTICATION / LOGIN SCREEN
+# ==========================================
+if not st.session_state.logged_in:
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown('<div class="main-headline">🔒 SECURE LOGIN</div>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#B000FF; text-align:center;">Premium Electricals ERP System</h3><br>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1.5, 2, 1.5])
+    with col2:
+        with st.form("login"):
+            st.markdown('<div style="text-align:center; font-size:18px; color:white; margin-bottom:10px;">Enter Admin Password</div>', unsafe_allow_html=True)
+            password = st.text_input("Password", type="password", label_visibility="collapsed")
+            if st.form_submit_button("🔓 UNLOCK DASHBOARD", use_container_width=True):
+                # 👇 PASSWORD CHANGED TO 5200 👇
+                if password == "5200":
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid password! Try again.")
+    st.stop() # Stops the rest of the page from loading if not logged in
+
+# 🚪 LOGOUT SIDEBAR
+with st.sidebar:
+    st.title("⚡ Premium ERP")
+    st.divider()
+    if st.button("🚪 Logout System", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.page = "home"
+        st.rerun()
 
 def fetch_profile():
     with conn.cursor() as cur:
