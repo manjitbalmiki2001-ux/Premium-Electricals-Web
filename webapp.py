@@ -23,36 +23,48 @@ except Exception as e:
     st.stop()
 
 def create_tables():
-    with conn.cursor() as cur:
-        # 1. Purchase Table
-        cur.execute('''CREATE TABLE IF NOT EXISTS web_purchase_bills (
-            id SERIAL PRIMARY KEY, bill_no VARCHAR(50) NOT NULL UNIQUE, bill_date DATE NOT NULL,
-            company VARCHAR(100), party VARCHAR(100) NOT NULL, gstin VARCHAR(20), qty INTEGER, 
-            taxable DECIMAL(15,2), cgst DECIMAL(15,2), sgst DECIMAL(15,2), igst DECIMAL(15,2), 
-            total DECIMAL(15,2) NOT NULL, remarks TEXT, file_name TEXT, file_data BYTEA)''')
-        
-        # 2. Sales Table
-        cur.execute('''CREATE TABLE IF NOT EXISTS web_sales_bills (
-            id SERIAL PRIMARY KEY, inv_no VARCHAR(50) NOT NULL UNIQUE, inv_date DATE NOT NULL,
-            customer_name VARCHAR(100) NOT NULL, gstin VARCHAR(20), items TEXT, qty INTEGER, 
-            taxable DECIMAL(15,2), cgst DECIMAL(15,2), sgst DECIMAL(15,2), igst DECIMAL(15,2), 
-            total DECIMAL(15,2) NOT NULL, remarks TEXT, file_name TEXT, file_data BYTEA)''')
-        
-        # 3. Proforma Tables
-        cur.execute('''CREATE TABLE IF NOT EXISTS web_business_profile (
-            id INTEGER PRIMARY KEY, firm_name VARCHAR(255), address TEXT, contact VARCHAR(50), gstin VARCHAR(50))''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS web_proforma_invoices (
-            id SERIAL PRIMARY KEY, inv_no VARCHAR(50), date DATE, time TIME, party_name VARCHAR(255),
-            address TEXT, mobile VARCHAR(50), gstin VARCHAR(50), subtotal DECIMAL(15,2), discount_total DECIMAL(15,2), 
-            tax_total DECIMAL(15,2), grand_total DECIMAL(15,2), notes TEXT)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS web_proforma_items (
-            id SERIAL PRIMARY KEY, invoice_id INTEGER REFERENCES web_proforma_invoices(id) ON DELETE CASCADE,
-            item_name TEXT, qty DECIMAL(10,2), price_incl DECIMAL(15,2), disc_perc DECIMAL(5,2),
-            tax_perc DECIMAL(5,2), line_total DECIMAL(15,2))''')
-        
-        cur.execute("SELECT id FROM web_business_profile WHERE id=1")
-        if not cur.fetchone():
-            cur.execute("INSERT INTO web_business_profile (id, firm_name) VALUES (1, 'PREMIUM ELECTRICALS & WHOLESALERS')")
+    try:
+        with conn.cursor() as cur:
+            # 1. Purchase Table
+            cur.execute('''CREATE TABLE IF NOT EXISTS web_purchase_bills (
+                id SERIAL PRIMARY KEY, bill_no VARCHAR(50) NOT NULL UNIQUE, bill_date DATE NOT NULL,
+                company VARCHAR(100), party VARCHAR(100), gstin VARCHAR(20), qty INTEGER, 
+                taxable DECIMAL(15,2), cgst DECIMAL(15,2), sgst DECIMAL(15,2), igst DECIMAL(15,2), 
+                total DECIMAL(15,2) NOT NULL, remarks TEXT, file_name TEXT, file_data BYTEA)''')
+            
+            # 2. Sales Table
+            cur.execute('''CREATE TABLE IF NOT EXISTS web_sales_bills (
+                id SERIAL PRIMARY KEY, inv_no VARCHAR(50) NOT NULL UNIQUE, inv_date DATE NOT NULL,
+                customer_name VARCHAR(100), gstin VARCHAR(20), items TEXT, qty INTEGER, 
+                taxable DECIMAL(15,2), cgst DECIMAL(15,2), sgst DECIMAL(15,2), igst DECIMAL(15,2), 
+                total DECIMAL(15,2) NOT NULL, remarks TEXT, file_name TEXT, file_data BYTEA)''')
+            
+            # 3. Proforma Tables
+            cur.execute('''CREATE TABLE IF NOT EXISTS web_business_profile (
+                id INTEGER PRIMARY KEY, firm_name VARCHAR(255), address TEXT, contact VARCHAR(50), gstin VARCHAR(50))''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS web_proforma_invoices (
+                id SERIAL PRIMARY KEY, inv_no VARCHAR(50), date DATE, time TIME, party_name VARCHAR(255),
+                address TEXT, mobile VARCHAR(50), gstin VARCHAR(50), subtotal DECIMAL(15,2), discount_total DECIMAL(15,2), 
+                tax_total DECIMAL(15,2), grand_total DECIMAL(15,2), notes TEXT)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS web_proforma_items (
+                id SERIAL PRIMARY KEY, invoice_id INTEGER REFERENCES web_proforma_invoices(id) ON DELETE CASCADE,
+                item_name TEXT, qty DECIMAL(10,2), price_incl DECIMAL(15,2), disc_perc DECIMAL(5,2),
+                tax_perc DECIMAL(5,2), line_total DECIMAL(15,2))''')
+            
+            cur.execute("SELECT id FROM web_business_profile WHERE id=1")
+            if not cur.fetchone():
+                cur.execute("INSERT INTO web_business_profile (id, firm_name) VALUES (1, 'PREMIUM ELECTRICALS & WHOLESALERS')")
+                
+            # --- AUTO HEALING: IF OLD DATABASE HAS MISSING COLUMNS, ADD THEM SAFELY ---
+            try: cur.execute("ALTER TABLE web_sales_bills ADD COLUMN IF NOT EXISTS customer_name VARCHAR(100)")
+            except: pass
+            try: cur.execute("ALTER TABLE web_purchase_bills ADD COLUMN IF NOT EXISTS party VARCHAR(100)")
+            except: pass
+            try: cur.execute("ALTER TABLE web_purchase_bills ADD COLUMN IF NOT EXISTS company VARCHAR(100)")
+            except: pass
+    except Exception as e:
+        pass # Prevents startup crashes
+
 create_tables()
 
 # ==========================================
@@ -89,7 +101,6 @@ if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entr
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
 
-# Initialize completely empty dataframe to avoid "None" bug
 if "proforma_items" not in st.session_state:
     st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"])
 
@@ -124,9 +135,11 @@ with st.sidebar:
         st.rerun()
 
 def fetch_profile():
-    with conn.cursor() as cur:
-        cur.execute("SELECT firm_name, address, contact, gstin FROM web_business_profile WHERE id=1")
-        return cur.fetchone()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT firm_name, address, contact, gstin FROM web_business_profile WHERE id=1")
+            return cur.fetchone()
+    except: return None
 
 # ==========================================
 # 🏠 1. HOME DASHBOARD
@@ -157,19 +170,26 @@ elif st.session_state.page == "purchase":
     st.divider()
 
     if st.session_state.purchase_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_pur_parties = []
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT party FROM web_purchase_bills WHERE party IS NOT NULL AND party != ''")
-            saved_pur_parties = [r[0] for r in cur.fetchall()]
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT party FROM web_purchase_bills WHERE party IS NOT NULL AND party != ''")
+                saved_pur_parties = [r[0] for r in cur.fetchall()]
+        except Exception:
+            pass
         
         autofill_party = st.selectbox("🔍 Search & Autofill Past Supplier Details", ["-- Type New Below --"] + saved_pur_parties)
         def_party, def_pgst, def_company = "", "", ""
+        
         if autofill_party != "-- Type New Below --":
             def_party = autofill_party
-            with conn.cursor() as cur:
-                cur.execute("SELECT company, gstin FROM web_purchase_bills WHERE party=%s ORDER BY id DESC LIMIT 1", (autofill_party,))
-                res = cur.fetchone()
-                if res: def_company, def_pgst = res[0] or "", res[1] or ""
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT company, gstin FROM web_purchase_bills WHERE party=%s ORDER BY id DESC LIMIT 1", (autofill_party,))
+                    res = cur.fetchone()
+                    if res: def_company, def_pgst = res[0] or "", res[1] or ""
+            except Exception: pass
 
         with st.form("purchase_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
@@ -201,7 +221,7 @@ elif st.session_state.page == "purchase":
                                         (bill_no, bill_date, company, party, gstin, qty, taxable, cgst, sgst, igst, total, remarks, file_name, file_data))
                         st.success(f"✅ Purchase Bill {bill_no} saved!")
                     except psycopg2.IntegrityError: st.error("⚠️ Bill Number already exists!")
-                    except Exception as e: st.error(f"Error: {e}")
+                    except Exception as e: st.error(f"Error saving data: {e}")
 
     elif st.session_state.purchase_tab == "register":
         st.subheader("📋 Saved Purchase Register")
@@ -217,24 +237,27 @@ elif st.session_state.page == "purchase":
             params.extend([f"%{search_query}%", f"%{search_query}%"])
         query += " ORDER BY bill_date DESC"
         
-        df = pd.read_sql_query(query, conn, params=params)
-        if df.empty: st.info("No records found.")
-        else:
-            st.markdown('<div class="summary-box">', unsafe_allow_html=True)
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Visible Bills", len(df)); m2.metric("Total Qty", int(df['qty'].sum()))
-            m3.metric("Total Taxable", f"₹{df['taxable'].sum():,.2f}"); m4.metric("Grand Total", f"₹{df['total'].sum():,.2f}")
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+        try:
+            df = pd.read_sql_query(query, conn, params=params)
+            if df.empty: st.info("No records found.")
+            else:
+                st.markdown('<div class="summary-box">', unsafe_allow_html=True)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Visible Bills", len(df)); m2.metric("Total Qty", int(df['qty'].sum()))
+                m3.metric("Total Taxable", f"₹{df['taxable'].sum():,.2f}"); m4.metric("Grand Total", f"₹{df['total'].sum():,.2f}")
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.dataframe(df, use_container_width=True, hide_index=True)
 
-            st.write("**Download Attachment**")
-            selected_id = st.selectbox("Select Bill ID to download attachment:", df['id'].tolist(), key="pur_dl")
-            with conn.cursor() as cur:
-                cur.execute("SELECT file_name, file_data FROM web_purchase_bills WHERE id=%s", (selected_id,))
-                file_info = cur.fetchone()
-                if file_info and file_info[1]:
-                    st.download_button(label=f"📂 Download {file_info[0]}", data=file_info[1], file_name=file_info[0], mime="application/octet-stream")
-                else: st.button("📂 No File Attached", disabled=True)
+                st.write("**Download Attachment**")
+                selected_id = st.selectbox("Select Bill ID to download attachment:", df['id'].tolist(), key="pur_dl")
+                with conn.cursor() as cur:
+                    cur.execute("SELECT file_name, file_data FROM web_purchase_bills WHERE id=%s", (selected_id,))
+                    file_info = cur.fetchone()
+                    if file_info and file_info[1]:
+                        st.download_button(label=f"📂 Download {file_info[0]}", data=file_info[1], file_name=file_info[0], mime="application/octet-stream")
+                    else: st.button("📂 No File Attached", disabled=True)
+        except Exception as e:
+            st.error("Error loading register data. Let support know if this persists.")
 
 # ==========================================
 # 📄 3. PROFORMA INVOICE
@@ -255,19 +278,25 @@ elif st.session_state.page == "proforma":
     st.divider()
 
     if st.session_state.proforma_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_parties = []
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT party_name FROM web_proforma_invoices WHERE party_name IS NOT NULL AND party_name != ''")
-            saved_parties = [r[0] for r in cur.fetchall()]
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT party_name FROM web_proforma_invoices WHERE party_name IS NOT NULL AND party_name != ''")
+                saved_parties = [r[0] for r in cur.fetchall()]
+        except Exception: pass
         
         selected_party_af = st.selectbox("🔍 Search & Autofill Past Party Details", ["-- Type New Below --"] + saved_parties)
         p_name, p_addr, p_mob, p_gst = "", "", "", ""
+        
         if selected_party_af != "-- Type New Below --":
             p_name = selected_party_af
-            with conn.cursor() as cur:
-                cur.execute("SELECT address, mobile, gstin FROM web_proforma_invoices WHERE party_name=%s ORDER BY id DESC LIMIT 1", (selected_party_af,))
-                details = cur.fetchone()
-                if details: p_addr, p_mob, p_gst = details[0] or "", details[1] or "", details[2] or ""
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT address, mobile, gstin FROM web_proforma_invoices WHERE party_name=%s ORDER BY id DESC LIMIT 1", (selected_party_af,))
+                    details = cur.fetchone()
+                    if details: p_addr, p_mob, p_gst = details[0] or "", details[1] or "", details[2] or ""
+            except Exception: pass
 
         col1, col2 = st.columns(2)
         with col1:
@@ -285,9 +314,6 @@ elif st.session_state.page == "proforma":
 
         st.divider()
         
-        # ========================================
-        # ⚡ FAST ITEM ENTRY FORM FOR MOBILE ⚡
-        # ========================================
         st.markdown('<div class="module-title" style="font-size:22px;">🛒 Fast Item Entry (Mobile Optimized)</div>', unsafe_allow_html=True)
         st.caption("📱 Mobile Users: Is form me Type karein. Keyboard turant khulega bina double tap kiye!")
         
@@ -316,9 +342,6 @@ elif st.session_state.page == "proforma":
                 else:
                     st.error("⚠️ Please enter an Item Name first!")
 
-        # ========================================
-        # 📋 INVOICE ITEMS TABLE & CALCULATIONS
-        # ========================================
         st.subheader("📋 Invoice Items")
         st.caption("💡 Tip: To delete an item, check the box on the left and click the 🗑️ icon on the top right.")
         
@@ -332,7 +355,6 @@ elif st.session_state.page == "proforma":
                 "Tax %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0)
             })
 
-        # Sync table edits/deletes back to session state so they persist
         st.session_state.proforma_items = edited_df
 
         total_taxable, total_disc, total_tax, grand_total = 0.0, 0.0, 0.0, 0.0
@@ -340,7 +362,6 @@ elif st.session_state.page == "proforma":
         
         for index, row in edited_df.iterrows():
             item_name = str(row["Item Name"]).strip()
-            # Absolute kill-switch for 'None' or blank values
             if item_name != "" and item_name.lower() != "none" and item_name.lower() != "nan":
                 qty = float(row.get("Qty") or 0)
                 price_incl = float(row.get("Price (Incl. GST)") or 0)
@@ -384,35 +405,37 @@ elif st.session_state.page == "proforma":
                                         (invoice_id, item[0], item[1], item[2], item[3], item[4], item[5]))
                     
                     st.success("✅ Invoice saved!")
-                    # Clear items after saving
                     st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"])
                     st.rerun()
                 
-                except Exception as e: st.error(f"Error: {e}")
+                except Exception as e: st.error(f"Error Saving: {e}")
 
     elif st.session_state.proforma_tab == "register":
         st.subheader("📋 Saved Proforma Invoices")
-        df = pd.read_sql_query("SELECT id, inv_no, date, party_name, grand_total FROM web_proforma_invoices ORDER BY id DESC", conn)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        st.divider()
-        if not df.empty:
-            st.write("**Print / Download Invoice**")
-            selected_id = st.selectbox("Select Invoice ID to Print:", df['id'].tolist(), key="prof_dl")
-            if st.button("🖨️ Generate Web Invoice"):
-                with conn.cursor() as cur:
-                    cur.execute("SELECT * FROM web_proforma_invoices WHERE id=%s", (selected_id,))
-                    inv = cur.fetchone()
-                    cur.execute("SELECT item_name, qty, price_incl, line_total FROM web_proforma_items WHERE invoice_id=%s", (selected_id,))
-                    items = cur.fetchall()
-                    html_content = f"""<div style="background:white; color:black; padding:20px; font-family:sans-serif; border:1px solid #ddd; max-width: 800px; margin: auto;">
-                        <h1 style="text-align:center; color:#0A2540;">{firm_name}</h1><h3 style="text-align:center; letter-spacing: 2px;">PROFORMA INVOICE</h3><hr>
-                        <p><b>Bill To:</b> {inv[4]} <br> <b>Invoice No:</b> {inv[1]} <br> <b>Date:</b> {inv[2]}</p>
-                        <table style="width:100%; border-collapse: collapse; margin-top: 20px;"><tr style="background:#0A2540; color:white;">
-                        <th style="padding:10px; border:1px solid #ccc;">Item Name</th><th style="padding:10px; border:1px solid #ccc;">Qty</th><th style="padding:10px; border:1px solid #ccc;">Amount</th></tr>"""
-                    for it in items: html_content += f"<tr><td style='padding:8px; border:1px solid #ccc;'>{it[0]}</td><td style='padding:8px; border:1px solid #ccc; text-align:center;'>{it[1]}</td><td style='padding:8px; border:1px solid #ccc; text-align:right;'>₹{it[3]:.2f}</td></tr>"
-                    html_content += f"</table><h2 style='text-align:right; color:#DC2626;'>Grand Total: ₹{inv[11]:.2f}</h2><p><b>Terms:</b> {inv[12]}</p><br><button onclick='window.print()' style='padding: 10px 20px; background: #059669; color: white; cursor: pointer;'>Print Invoice</button></div>"
-                    st.components.v1.html(html_content, height=600, scrolling=True)
+        try:
+            df = pd.read_sql_query("SELECT id, inv_no, date, party_name, grand_total FROM web_proforma_invoices ORDER BY id DESC", conn)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            st.divider()
+            if not df.empty:
+                st.write("**Print / Download Invoice**")
+                selected_id = st.selectbox("Select Invoice ID to Print:", df['id'].tolist(), key="prof_dl")
+                if st.button("🖨️ Generate Web Invoice"):
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT * FROM web_proforma_invoices WHERE id=%s", (selected_id,))
+                        inv = cur.fetchone()
+                        cur.execute("SELECT item_name, qty, price_incl, line_total FROM web_proforma_items WHERE invoice_id=%s", (selected_id,))
+                        items = cur.fetchall()
+                        html_content = f"""<div style="background:white; color:black; padding:20px; font-family:sans-serif; border:1px solid #ddd; max-width: 800px; margin: auto;">
+                            <h1 style="text-align:center; color:#0A2540;">{firm_name}</h1><h3 style="text-align:center; letter-spacing: 2px;">PROFORMA INVOICE</h3><hr>
+                            <p><b>Bill To:</b> {inv[4]} <br> <b>Invoice No:</b> {inv[1]} <br> <b>Date:</b> {inv[2]}</p>
+                            <table style="width:100%; border-collapse: collapse; margin-top: 20px;"><tr style="background:#0A2540; color:white;">
+                            <th style="padding:10px; border:1px solid #ccc;">Item Name</th><th style="padding:10px; border:1px solid #ccc;">Qty</th><th style="padding:10px; border:1px solid #ccc;">Amount</th></tr>"""
+                        for it in items: html_content += f"<tr><td style='padding:8px; border:1px solid #ccc;'>{it[0]}</td><td style='padding:8px; border:1px solid #ccc; text-align:center;'>{it[1]}</td><td style='padding:8px; border:1px solid #ccc; text-align:right;'>₹{it[3]:.2f}</td></tr>"
+                        html_content += f"</table><h2 style='text-align:right; color:#DC2626;'>Grand Total: ₹{inv[11]:.2f}</h2><p><b>Terms:</b> {inv[12]}</p><br><button onclick='window.print()' style='padding: 10px 20px; background: #059669; color: white; cursor: pointer;'>Print Invoice</button></div>"
+                        st.components.v1.html(html_content, height=600, scrolling=True)
+        except Exception:
+            st.error("Error loading invoices.")
 
     elif st.session_state.proforma_tab == "profile":
         with st.form("profile_form"):
@@ -421,8 +444,11 @@ elif st.session_state.page == "proforma":
             new_cont = st.text_input("Contact No", profile[2] if profile else "")
             new_gst = st.text_input("GSTIN", profile[3] if profile else "")
             if st.form_submit_button("💾 Save Profile"):
-                with conn.cursor() as cur: cur.execute("UPDATE web_business_profile SET firm_name=%s, address=%s, contact=%s, gstin=%s WHERE id=1", (new_firm, new_addr, new_cont, new_gst))
-                st.success("Profile Updated!"); st.rerun()
+                try:
+                    with conn.cursor() as cur: cur.execute("UPDATE web_business_profile SET firm_name=%s, address=%s, contact=%s, gstin=%s WHERE id=1", (new_firm, new_addr, new_cont, new_gst))
+                    st.success("Profile Updated!"); st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save profile: {e}")
 
 # ==========================================
 # 💰 4. SALES REGISTER
@@ -439,19 +465,25 @@ elif st.session_state.page == "sales":
     st.divider()
 
     if st.session_state.sales_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_customers = []
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT customer_name FROM web_sales_bills WHERE customer_name IS NOT NULL AND customer_name != ''")
-            saved_customers = [r[0] for r in cur.fetchall()]
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT customer_name FROM web_sales_bills WHERE customer_name IS NOT NULL AND customer_name != ''")
+                saved_customers = [r[0] for r in cur.fetchall()]
+        except Exception: pass
         
         autofill_cust = st.selectbox("🔍 Search & Autofill Past Customer Details", ["-- Type New Below --"] + saved_customers)
         def_cust, def_cgst = "", ""
+        
         if autofill_cust != "-- Type New Below --":
             def_cust = autofill_cust
-            with conn.cursor() as cur:
-                cur.execute("SELECT gstin FROM web_sales_bills WHERE customer_name=%s ORDER BY id DESC LIMIT 1", (autofill_cust,))
-                res = cur.fetchone()
-                if res: def_cgst = res[0] or ""
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT gstin FROM web_sales_bills WHERE customer_name=%s ORDER BY id DESC LIMIT 1", (autofill_cust,))
+                    res = cur.fetchone()
+                    if res: def_cgst = res[0] or ""
+            except Exception: pass
 
         with st.form("sales_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
@@ -483,7 +515,7 @@ elif st.session_state.page == "sales":
                                         (inv_no, inv_date, customer, gstin, items, qty, taxable, cgst, sgst, igst, total, remarks, file_name, file_data))
                         st.success(f"✅ Sales Bill {inv_no} saved successfully!")
                     except psycopg2.IntegrityError: st.error("⚠️ Invoice Number already exists!")
-                    except Exception as e: st.error(f"Error: {e}")
+                    except Exception as e: st.error(f"Error saving data: {e}")
 
     elif st.session_state.sales_tab == "register":
         st.subheader("📋 Saved Sales Register")
@@ -499,43 +531,46 @@ elif st.session_state.page == "sales":
             params.extend([f"%{search_query}%"] * 3)
         query += " ORDER BY inv_date DESC, id DESC"
         
-        df = pd.read_sql_query(query, conn, params=params)
-        if df.empty: st.info("No records found.")
-        else:
-            st.markdown('<div class="summary-box">', unsafe_allow_html=True)
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Visible Sales", len(df)); m2.metric("Total Qty", int(df['qty'].sum()))
-            m3.metric("Total Taxable", f"₹{df['taxable'].sum():,.2f}"); m4.metric("Grand Total", f"₹{df['total'].sum():,.2f}")
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+        try:
+            df = pd.read_sql_query(query, conn, params=params)
+            if df.empty: st.info("No records found.")
+            else:
+                st.markdown('<div class="summary-box">', unsafe_allow_html=True)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Visible Sales", len(df)); m2.metric("Total Qty", int(df['qty'].sum()))
+                m3.metric("Total Taxable", f"₹{df['taxable'].sum():,.2f}"); m4.metric("Grand Total", f"₹{df['total'].sum():,.2f}")
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.dataframe(df, use_container_width=True, hide_index=True)
 
-            st.divider()
-            st.write("**Invoice Actions**")
-            selected_id = st.selectbox("Select Invoice ID to Action:", df['id'].tolist(), key="sales_dl")
-            
-            col_action1, col_action2, _ = st.columns([2,2,4])
-            with col_action1:
-                if st.button("🖨️ Generate Web Invoice"):
+                st.divider()
+                st.write("**Invoice Actions**")
+                selected_id = st.selectbox("Select Invoice ID to Action:", df['id'].tolist(), key="sales_dl")
+                
+                col_action1, col_action2, _ = st.columns([2,2,4])
+                with col_action1:
+                    if st.button("🖨️ Generate Web Invoice"):
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT * FROM web_sales_bills WHERE id=%s", (selected_id,))
+                            inv = cur.fetchone()
+                            html_content = f"""<div style="background:white; color:black; padding:30px; font-family:sans-serif; border:1px solid #ddd; max-width: 800px; margin: auto;">
+                                <h1 style="text-align:center; color:#2c3e50; margin-bottom: 0;">TAX INVOICE</h1>
+                                <h3 style="text-align:center; color:#444; margin-top: 5px;">PREMIUM ELECTRICALS & WHOLESALERS</h3>
+                                <hr><div style="display:flex; justify-content:space-between; margin-bottom: 20px;">
+                                <div><b>Invoice No:</b> {inv[1]}<br><b>Billed To:</b> {inv[3]}</div><div style="text-align:right;"><b>Date:</b> {inv[2]}</div></div>
+                                <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;"><tr style="background:#e6e6e6; font-weight:bold;">
+                                <th style="padding:10px; border:1px solid #000;">Item Description</th><th style="padding:10px; border:1px solid #000;">Qty</th><th style="padding:10px; border:1px solid #000;">Total (Rs)</th></tr>
+                                <tr><td style="padding:10px; border:1px solid #000;">{inv[5]}</td><td style="padding:10px; border:1px solid #000; text-align:center;">{inv[6]}</td><td style="padding:10px; border:1px solid #000; text-align:right;">{inv[11]:.2f}</td></tr>
+                                </table><h2 style="text-align:right;">Grand Total: Rs. {inv[11]:.2f}</h2><p><b>Remarks:</b> {inv[12]}</p>
+                                <br><button onclick="window.print()" style="padding: 10px 20px; background: #00E5FF; color: black; font-weight:bold; cursor: pointer;">Print / Save PDF</button></div>"""
+                            st.components.v1.html(html_content, height=800, scrolling=True)
+
+                with col_action2:
                     with conn.cursor() as cur:
-                        cur.execute("SELECT * FROM web_sales_bills WHERE id=%s", (selected_id,))
-                        inv = cur.fetchone()
-                        html_content = f"""<div style="background:white; color:black; padding:30px; font-family:sans-serif; border:1px solid #ddd; max-width: 800px; margin: auto;">
-                            <h1 style="text-align:center; color:#2c3e50; margin-bottom: 0;">TAX INVOICE</h1>
-                            <h3 style="text-align:center; color:#444; margin-top: 5px;">PREMIUM ELECTRICALS & WHOLESALERS</h3>
-                            <hr><div style="display:flex; justify-content:space-between; margin-bottom: 20px;">
-                            <div><b>Invoice No:</b> {inv[1]}<br><b>Billed To:</b> {inv[3]}</div><div style="text-align:right;"><b>Date:</b> {inv[2]}</div></div>
-                            <table style="width:100%; border-collapse: collapse; margin-bottom: 20px;"><tr style="background:#e6e6e6; font-weight:bold;">
-                            <th style="padding:10px; border:1px solid #000;">Item Description</th><th style="padding:10px; border:1px solid #000;">Qty</th><th style="padding:10px; border:1px solid #000;">Total (Rs)</th></tr>
-                            <tr><td style="padding:10px; border:1px solid #000;">{inv[5]}</td><td style="padding:10px; border:1px solid #000; text-align:center;">{inv[6]}</td><td style="padding:10px; border:1px solid #000; text-align:right;">{inv[11]:.2f}</td></tr>
-                            </table><h2 style="text-align:right;">Grand Total: Rs. {inv[11]:.2f}</h2><p><b>Remarks:</b> {inv[12]}</p>
-                            <br><button onclick="window.print()" style="padding: 10px 20px; background: #00E5FF; color: black; font-weight:bold; cursor: pointer;">Print / Save PDF</button></div>"""
-                        st.components.v1.html(html_content, height=800, scrolling=True)
-
-            with col_action2:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT file_name, file_data FROM web_sales_bills WHERE id=%s", (selected_id,))
-                    file_info = cur.fetchone()
-                    if file_info and file_info[1]: st.download_button(label="📂 Download Attached Bill", data=file_info[1], file_name=file_info[0], mime="application/octet-stream")
-                    else: st.button("📂 No File Attached", disabled=True)
+                        cur.execute("SELECT file_name, file_data FROM web_sales_bills WHERE id=%s", (selected_id,))
+                        file_info = cur.fetchone()
+                        if file_info and file_info[1]: st.download_button(label="📂 Download Attached Bill", data=file_info[1], file_name=file_info[0], mime="application/octet-stream")
+                        else: st.button("📂 No File Attached", disabled=True)
+        except Exception as e:
+            st.error("Error loading register data.")
 
 st.markdown('<div class="tagline">DEVELOPED BY ER. MANJIT BALMIKI</div>', unsafe_allow_html=True)
