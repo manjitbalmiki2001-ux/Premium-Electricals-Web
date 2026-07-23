@@ -94,8 +94,13 @@ if "page" not in st.session_state: st.session_state.page = "home"
 if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entry"
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
+
+# SMART ROW SYSTEM: Only 1 row initially. Enter/Tab will automatically add more.
 if "proforma_items" not in st.session_state:
-    st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Tax %"], data=[["", 1, 0.0, 0, 0] for _ in range(5)])
+    st.session_state.proforma_items = pd.DataFrame(
+        columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"], 
+        data=[["", 1, 0.0, 0.0, 0.0, 0.0]]
+    )
 
 # ==========================================
 # 🔒 AUTHENTICATION / LOGIN SCREEN
@@ -111,13 +116,12 @@ if not st.session_state.logged_in:
             st.markdown('<div style="text-align:center; font-size:18px; color:white; margin-bottom:10px;">Enter Admin Password</div>', unsafe_allow_html=True)
             password = st.text_input("Password", type="password", label_visibility="collapsed")
             if st.form_submit_button("🔓 UNLOCK DASHBOARD", use_container_width=True):
-                # 👇 PASSWORD CHANGED TO 5200 👇
                 if password == "5200":
                     st.session_state.logged_in = True
                     st.rerun()
                 else:
                     st.error("❌ Invalid password! Try again.")
-    st.stop() # Stops the rest of the page from loading if not logged in
+    st.stop()
 
 # 🚪 LOGOUT SIDEBAR
 with st.sidebar:
@@ -261,25 +265,53 @@ elif st.session_state.page == "proforma":
             notes = st.text_input("Terms & Comments")
 
         st.subheader("Items Table")
+        
+        # UI config applied: Shows Disc Amt (₹)
         edited_df = st.data_editor(st.session_state.proforma_items, num_rows="dynamic", use_container_width=True,
-            column_config={"Qty": st.column_config.NumberColumn(min_value=1), "Price (Incl. GST)": st.column_config.NumberColumn(format="₹%.2f"),
-                           "Disc %": st.column_config.NumberColumn(min_value=0, max_value=100), "Tax %": st.column_config.NumberColumn(min_value=0, max_value=100)})
+            column_config={
+                "Qty": st.column_config.NumberColumn(min_value=1), 
+                "Price (Incl. GST)": st.column_config.NumberColumn(format="₹%.2f"),
+                "Disc %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0), 
+                "Disc Amt (₹)": st.column_config.NumberColumn(min_value=0.0, format="₹%.2f"),
+                "Tax %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0)
+            })
 
         total_taxable, total_disc, total_tax, grand_total = 0.0, 0.0, 0.0, 0.0
         calculated_items = []
+        
         for index, row in edited_df.iterrows():
-            # Safely handle 'None' or empty cells in the data editor
             item_name = str(row["Item Name"]) if pd.notna(row["Item Name"]) else ""
             
             if item_name.strip() != "" and item_name.strip().lower() != "none":
-                qty = float(row["Qty"] or 0); price_incl = float(row["Price (Incl. GST)"] or 0); disc_perc = float(row["Disc %"] or 0); tax_rate = float(row["Tax %"] or 0)
-                gross_incl = qty * price_incl; disc_amt = gross_incl * (disc_perc / 100); net_incl = gross_incl - disc_amt
-                taxable_amt = net_incl / (1 + (tax_rate / 100)); tax_amt = net_incl - taxable_amt
+                qty = float(row.get("Qty") or 0)
+                price_incl = float(row.get("Price (Incl. GST)") or 0)
+                disc_perc = float(row.get("Disc %") or 0)
+                disc_amt_flat = float(row.get("Disc Amt (₹)") or 0)
+                tax_rate = float(row.get("Tax %") or 0)
+
+                gross_incl = qty * price_incl
+                
+                # SMART DISCOUNT CALCULATION
+                if disc_amt_flat > 0:
+                    disc_amt = disc_amt_flat
+                    # Convert to percentage for DB storage to avoid schema changes
+                    effective_disc_perc = (disc_amt / gross_incl) * 100 if gross_incl > 0 else 0
+                else:
+                    disc_amt = gross_incl * (disc_perc / 100)
+                    effective_disc_perc = disc_perc
+
+                net_incl = gross_incl - disc_amt
+                taxable_amt = net_incl / (1 + (tax_rate / 100))
+                tax_amt = net_incl - taxable_amt
+                
                 total_taxable += taxable_amt; total_disc += disc_amt; total_tax += tax_amt; grand_total += net_incl
-                calculated_items.append((item_name, qty, price_incl, disc_perc, tax_rate, net_incl))
+                calculated_items.append((item_name, qty, price_incl, effective_disc_perc, tax_rate, net_incl))
 
         s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Sub Total", f"₹{total_taxable:,.2f}"); s2.metric("Discount", f"₹{total_disc:,.2f}"); s3.metric("Total Tax", f"₹{total_tax:,.2f}"); s4.markdown(f'<div class="grand-total">Grand Total: ₹{grand_total:,.2f}</div>', unsafe_allow_html=True)
+        s1.metric("Sub Total", f"₹{total_taxable:,.2f}")
+        s2.metric("Discount", f"₹{total_disc:,.2f}")
+        s3.metric("Total Tax", f"₹{total_tax:,.2f}")
+        s4.markdown(f'<div class="grand-total">Grand Total: ₹{grand_total:,.2f}</div>', unsafe_allow_html=True)
 
         if st.button("💾 SAVE INVOICE", type="primary"):
             if not inv_no or not party_name: st.error("⚠️ Invoice No and Party Name are mandatory.")
@@ -291,9 +323,14 @@ elif st.session_state.page == "proforma":
                                     (inv_no, inv_date, inv_time.strftime("%H:%M"), party_name, party_address, party_mobile, party_gstin, total_taxable, total_disc, total_tax, grand_total, notes))
                         invoice_id = cur.fetchone()[0]
                         for item in calculated_items:
+                            # Saving the effective percentage to the existing database schema
                             cur.execute("INSERT INTO web_proforma_items (invoice_id, item_name, qty, price_incl, disc_perc, tax_perc, line_total) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
                                         (invoice_id, item[0], item[1], item[2], item[3], item[4], item[5]))
-                    st.success("✅ Invoice saved!"); st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Tax %"], data=[["", 1, 0.0, 0, 0] for _ in range(5)])
+                    
+                    st.success("✅ Invoice saved!")
+                    # RESET TABLE BACK TO 1 EMPTY ROW
+                    st.session_state.proforma_items = pd.DataFrame(columns=["Item Name", "Qty", "Price (Incl. GST)", "Disc %", "Disc Amt (₹)", "Tax %"], data=[["", 1, 0.0, 0.0, 0.0, 0.0]])
+                
                 except Exception as e: st.error(f"Error: {e}")
 
     elif st.session_state.proforma_tab == "register":
