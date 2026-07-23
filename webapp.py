@@ -63,7 +63,16 @@ st.markdown("""
     .stApp { background-color: #121212; color: #FFFFFF; }
     .main-headline { color: #00E5FF; font-size: 42px; font-weight: 900; text-align: center; }
     .module-title { color: #00E5FF; font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 20px;}
-    div[data-testid="stButton"] > button { border-radius: 8px; font-weight: bold; }
+    
+    /* 100% INVISIBLE BUTTONS UNTIL HOVERED */
+    .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button { 
+        opacity: 0.0 !important; 
+        transition: opacity 0.3s ease-in-out !important; 
+    }
+    .stButton > button:hover, .stFormSubmitButton > button:hover, .stDownloadButton > button:hover { 
+        opacity: 1.0 !important; 
+    }
+    
     .stTextInput > div > div > input, .stNumberInput > div > div > input, .stDateInput > div > div > input, .stTimeInput > div > div > input {
         background-color: #1A1A24 !important; color: #00E5FF !important; border: 1px solid #333 !important;
     }
@@ -268,7 +277,8 @@ elif st.session_state.page == "proforma":
                         <table style="width:100%; border-collapse: collapse; margin-top: 20px;"><tr style="background:#0A2540; color:white;">
                         <th style="padding:10px; border:1px solid #ccc;">Item Name</th><th style="padding:10px; border:1px solid #ccc;">Qty</th><th style="padding:10px; border:1px solid #ccc;">Amount</th></tr>"""
                     for it in items: html_content += f"<tr><td style='padding:8px; border:1px solid #ccc;'>{it[0]}</td><td style='padding:8px; border:1px solid #ccc; text-align:center;'>{it[1]}</td><td style='padding:8px; border:1px solid #ccc; text-align:right;'>₹{it[3]:.2f}</td></tr>"
-                html_content += f"</table><h2 style='text-align:right; color:#DC2626;'>Grand Total: ₹{inv[11]:.2f}</h2><p><b>Terms:</b> {inv[12]}</p><br><button onclick='window.print()' style='padding: 10px 20px; background: #059669; color: white; cursor: pointer;'>Print Invoice</button></div>"
+                    html_content += f"</table><h2 style='text-align:right; color:#DC2626;'>Grand Total: ₹{inv[11]:.2f}</h2><p><b>Terms:</b> {inv[12]}</p><br><button onclick='window.print()' style='padding: 10px 20px; background: #059669; color: white; cursor: pointer;'>Print Invoice</button></div>"
+                    st.components.v1.html(html_content, height=600, scrolling=True)
 
     elif st.session_state.proforma_tab == "profile":
         with st.form("profile_form"):
