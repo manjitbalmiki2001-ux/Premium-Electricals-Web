@@ -64,13 +64,18 @@ st.markdown("""
     .main-headline { color: #00E5FF; font-size: 42px; font-weight: 900; text-align: center; }
     .module-title { color: #00E5FF; font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 20px;}
     
-    /* 100% INVISIBLE BUTTONS UNTIL HOVERED */
+    /* PERMANENTLY VISIBLE BUTTONS */
     .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button { 
-        opacity: 0.0 !important; 
-        transition: opacity 0.3s ease-in-out !important; 
+        background-color: #1A1A24 !important; 
+        border: 2px solid #00E5FF !important; 
+        color: #00E5FF !important; 
+        border-radius: 8px !important; 
+        font-weight: bold !important; 
+        transition: all 0.3s ease-in-out !important; 
     }
     .stButton > button:hover, .stFormSubmitButton > button:hover, .stDownloadButton > button:hover { 
-        opacity: 1.0 !important; 
+        background-color: #00E5FF !important; 
+        color: #121212 !important; 
     }
     
     .stTextInput > div > div > input, .stNumberInput > div > div > input, .stDateInput > div > div > input, .stTimeInput > div > div > input {
