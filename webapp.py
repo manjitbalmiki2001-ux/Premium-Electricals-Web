@@ -111,16 +111,25 @@ QUOTES = [
 ]
 
 # ==========================================
-# 🧠 REFRESH-PROOF STATE MANAGEMENT
+# 🧠 SMART HARDWARE BACK BUTTON SYNC SYSTEM
 # ==========================================
-# Read from URL first. If "auth=unlocked" is in the URL, stay logged in!
+# 1. Login State check
 if "logged_in" not in st.session_state: 
     if st.query_params.get("auth") == "unlocked":
         st.session_state.logged_in = True
     else:
         st.session_state.logged_in = False
 
-if "page" not in st.session_state: st.session_state.page = "home"
+# 2. Sync Phone Browser URL with App State (Crucial for Back Button)
+url_page = st.query_params.get("page", "home")
+
+if "page" not in st.session_state: 
+    st.session_state.page = url_page
+elif st.session_state.page != url_page:
+    # URL changed means user pressed the phone's hardware back button!
+    st.session_state.page = url_page
+
+# Other default states
 if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entry"
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
 if "proforma_tab" not in st.session_state: st.session_state.proforma_tab = "entry"
@@ -144,8 +153,9 @@ if not st.session_state.logged_in:
             if st.form_submit_button("🔓 UNLOCK DASHBOARD", use_container_width=True):
                 if password == "5200":
                     st.session_state.logged_in = True
-                    # 🚀 MAGIC TRICK: Saving login state in the URL so it survives a refresh!
                     st.query_params["auth"] = "unlocked"
+                    st.query_params["page"] = "home"
+                    st.session_state.page = "home"
                     st.rerun()
                 else:
                     st.error("❌ Invalid password! Try again.")
@@ -158,12 +168,12 @@ with st.sidebar:
     st.divider()
     if st.button("🏠 Home Dashboard", use_container_width=True):
         st.session_state.page = "home"
+        st.query_params["page"] = "home" # Update URL for back button tracker
         st.rerun()
     st.divider()
     if st.button("🚪 Logout System", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.page = "home"
-        # 🚀 Removing login state from URL upon logout
         st.query_params.clear() 
         st.rerun()
 
@@ -185,16 +195,30 @@ if st.session_state.page == "home":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🛒 PURCHASE REGISTER\n\n(Inward Stock)", use_container_width=True): st.session_state.page = "purchase"; st.rerun()
+        if st.button("🛒 PURCHASE REGISTER\n\n(Inward Stock)", use_container_width=True): 
+            st.session_state.page = "purchase"
+            st.query_params["page"] = "purchase"
+            st.rerun()
     with col2:
-        if st.button("📄 PROFORMA INVOICE\n\n(Quotation Builder)", use_container_width=True): st.session_state.page = "proforma"; st.rerun()
+        if st.button("📄 PROFORMA INVOICE\n\n(Quotation Builder)", use_container_width=True): 
+            st.session_state.page = "proforma"
+            st.query_params["page"] = "proforma"
+            st.rerun()
     with col3:
-        if st.button("💰 SALES REGISTER\n\n(Tax Invoice Billing)", use_container_width=True): st.session_state.page = "sales"; st.rerun()
+        if st.button("💰 SALES REGISTER\n\n(Tax Invoice Billing)", use_container_width=True): 
+            st.session_state.page = "sales"
+            st.query_params["page"] = "sales"
+            st.rerun()
 
 # ==========================================
 # 🛒 2. PURCHASE REGISTER
 # ==========================================
 elif st.session_state.page == "purchase":
+    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
+        st.session_state.page = "home"
+        st.query_params["page"] = "home"
+        st.rerun()
+        
     st.markdown('<div class="module-title">NEW PURCHASE ENTRY</div>', unsafe_allow_html=True)
     
     c1, c2, _ = st.columns([1.5, 1.5, 5])
@@ -205,6 +229,7 @@ elif st.session_state.page == "purchase":
     st.divider()
 
     if st.session_state.purchase_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_pur_parties = []
         try:
             with conn.cursor() as cur:
@@ -297,6 +322,11 @@ elif st.session_state.page == "purchase":
 # 📄 3. PROFORMA INVOICE
 # ==========================================
 elif st.session_state.page == "proforma":
+    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
+        st.session_state.page = "home"
+        st.query_params["page"] = "home"
+        st.rerun()
+        
     profile = fetch_profile()
     firm_name = profile[0] if profile else "Not Set"
     st.markdown(f'<h2 style="color:#1E3A8A; font-weight:bold; margin:0;">FIRM NAME: {firm_name.upper()}</h2>', unsafe_allow_html=True)
@@ -311,6 +341,7 @@ elif st.session_state.page == "proforma":
     st.divider()
 
     if st.session_state.proforma_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_parties = []
         try:
             with conn.cursor() as cur:
@@ -486,6 +517,11 @@ elif st.session_state.page == "proforma":
 # 💰 4. SALES REGISTER
 # ==========================================
 elif st.session_state.page == "sales":
+    if st.button("⬅️ BACK TO MAIN DASHBOARD"): 
+        st.session_state.page = "home"
+        st.query_params["page"] = "home"
+        st.rerun()
+        
     st.markdown('<div class="module-title">NEW SALES ENTRY</div>', unsafe_allow_html=True)
     
     c1, c2, _ = st.columns([1.5, 1.5, 5])
@@ -496,6 +532,7 @@ elif st.session_state.page == "sales":
     st.divider()
 
     if st.session_state.sales_tab == "entry":
+        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_customers = []
         try:
             with conn.cursor() as cur:
