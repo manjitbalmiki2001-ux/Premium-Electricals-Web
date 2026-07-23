@@ -12,8 +12,6 @@ st.set_page_config(page_title="Premium Electricals - Business Management System"
 
 DB_URL = "postgresql://postgres.nerrocywloccycvdqcqn:Manjitred4505@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
 
-# 🚀 PERFORMANCE OPTIMIZATION: Connection & Table Creation Cached Together!
-# Ab yeh heavy load baar-baar nahi lega, sirf ek baar run hoga. App ekdum fast chalegi!
 @st.cache_resource
 def init_connection_and_setup():
     try:
@@ -112,8 +110,16 @@ QUOTES = [
     "“Growth is never by mere chance; it is the result of forces working together.”"
 ]
 
-# STATE MANAGEMENT
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
+# ==========================================
+# 🧠 REFRESH-PROOF STATE MANAGEMENT
+# ==========================================
+# Read from URL first. If "auth=unlocked" is in the URL, stay logged in!
+if "logged_in" not in st.session_state: 
+    if st.query_params.get("auth") == "unlocked":
+        st.session_state.logged_in = True
+    else:
+        st.session_state.logged_in = False
+
 if "page" not in st.session_state: st.session_state.page = "home"
 if "purchase_tab" not in st.session_state: st.session_state.purchase_tab = "entry"
 if "sales_tab" not in st.session_state: st.session_state.sales_tab = "entry"
@@ -138,12 +144,14 @@ if not st.session_state.logged_in:
             if st.form_submit_button("🔓 UNLOCK DASHBOARD", use_container_width=True):
                 if password == "5200":
                     st.session_state.logged_in = True
+                    # 🚀 MAGIC TRICK: Saving login state in the URL so it survives a refresh!
+                    st.query_params["auth"] = "unlocked"
                     st.rerun()
                 else:
                     st.error("❌ Invalid password! Try again.")
     st.stop()
 
-# 🚪 SIDEBAR MENU & QUOTE
+# 🚪 SIDEBAR MENU & LOGOUT
 with st.sidebar:
     st.title("⚡ Premium ERP")
     st.markdown(f'<div class="quote-box">💡 {random.choice(QUOTES)}</div>', unsafe_allow_html=True)
@@ -155,6 +163,8 @@ with st.sidebar:
     if st.button("🚪 Logout System", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.page = "home"
+        # 🚀 Removing login state from URL upon logout
+        st.query_params.clear() 
         st.rerun()
 
 def fetch_profile():
@@ -171,7 +181,6 @@ if st.session_state.page == "home":
     st.markdown('<div class="main-headline">⚡ PREMIUM ELECTRICALS ⚡</div>', unsafe_allow_html=True)
     st.markdown('<h3 style="color:#B000FF; text-align:center;">Commercial Sales & Business Operations Dashboard</h3><br>', unsafe_allow_html=True)
     
-    # Adding quote to main screen as well for better UI
     st.markdown(f'<div class="quote-box" style="text-align:center; max-width: 800px; margin: 0 auto 30px auto;">{random.choice(QUOTES)}</div>', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)
@@ -196,7 +205,6 @@ elif st.session_state.page == "purchase":
     st.divider()
 
     if st.session_state.purchase_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_pur_parties = []
         try:
             with conn.cursor() as cur:
@@ -303,7 +311,6 @@ elif st.session_state.page == "proforma":
     st.divider()
 
     if st.session_state.proforma_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_parties = []
         try:
             with conn.cursor() as cur:
@@ -489,7 +496,6 @@ elif st.session_state.page == "sales":
     st.divider()
 
     if st.session_state.sales_tab == "entry":
-        # 🛡️ ANTI-CRASH AUTOFILL GETTER
         saved_customers = []
         try:
             with conn.cursor() as cur:
